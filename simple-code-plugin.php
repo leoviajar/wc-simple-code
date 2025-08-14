@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Simple Code
  * Description: Um plugin simples para adicionar códigos personalizados sem modificar o functions.php.
- * Version: 1.1.1
+ * Version: 1.2.0
  * Author: Leonardo
  * License: GPL2
  */

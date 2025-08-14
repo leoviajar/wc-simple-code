@@ -1,9 +1,9 @@
 <?php
 /**
- * Exemplo de arquivo de código personalizado
- * 
- * Adicione seus códigos personalizados aqui.
- * Este arquivo é carregado automaticamente pelo plugin Simple Code Plugin
+ * Código de Parcelamento Personalizado para WooCommerce com Painel de Controle
+ *
+ * Cria uma página de configurações em "WooCommerce > Parcelamento" para
+ * definir as regras de exibição do parcelamento e do Pix para todo o site.
  */
 
 // Previne acesso direto ao arquivo
@@ -11,193 +11,279 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
+// =================================================================================
+// 1. CRIAÇÃO DA PÁGINA DE CONFIGURAÇÕES NO ADMIN
+// =================================================================================
+
 /**
- * Gera o HTML para o desconto no Pix.
- * @param WC_Product $product O objeto do produto.
- * @return string O HTML da informação do Pix.
+ * Adiciona a página de configurações no menu do WooCommerce.
  */
-function wd_get_pix_html( $product ) {
+add_action('admin_menu', 'wd_add_payment_settings_page');
+function wd_add_payment_settings_page() {
+    add_submenu_page(
+        'woocommerce',
+        'Configurações de Parcelamento e Pix',
+        'Parcelamento',
+        'manage_woocommerce',
+        'wd-payment-settings',
+        'wd_render_payment_settings_page'
+    );
+}
+
+/**
+ * Registra todas as configurações.
+ */
+add_action('admin_init', 'wd_register_payment_settings');
+function wd_register_payment_settings() {
+    // Grupo de opções
+    $option_group = 'wd_payment_options_group';
+
+    // Registra a opção do tipo de parcelamento
+    register_setting($option_group, 'wd_installment_default_type', [
+        'type' => 'string',
+        'sanitize_callback' => 'sanitize_text_field',
+        'default' => '12x'
+    ]);
+
+    // Registra a opção do tipo de exibição do Pix
+    register_setting($option_group, 'wd_pix_display_type', [
+        'type' => 'string',
+        'sanitize_callback' => 'sanitize_text_field',
+        'default' => 'calculated'
+    ]);
+}
+
+/**
+ * Renderiza o HTML da página de configurações.
+ */
+function wd_render_payment_settings_page() {
+    ?>
+    <div class="wrap">
+        <h1>Configurações de Parcelamento e Pix</h1>
+        <p>Escolha as regras de exibição que serão aplicadas a todos os produtos do site.</p>
+
+        <form method="post" action="options.php">
+            <?php
+                settings_fields('wd_payment_options_group');
+                $installment_option = get_option('wd_installment_default_type', '12x');
+                $pix_option = get_option('wd_pix_display_type', 'calculated');
+            ?>
+
+            <h2 style="margin-top: 20px;">Configuração do Parcelamento no Cartão</h2>
+            <table class="form-table">
+                <tr valign="top">
+                    <th scope="row">Regra Padrão</th>
+                    <td>
+                        <fieldset>
+                            <label>
+                                <input type="radio" name="wd_installment_default_type" value="12x" <?php checked($installment_option, '12x'); ?> />
+                                <span>Parcelamento em até <strong>12x</strong></span>
+                            </label>
+                              
+
+                            <label>
+                                <input type="radio" name="wd_installment_default_type" value="3x" <?php checked($installment_option, '3x'); ?> />
+                                <span>Parcelamento em <strong>3x sem juros</strong></span>
+                            </label>
+                        </fieldset>
+                    </td>
+                </tr>
+            </table>
+
+            <h2 style="margin-top: 20px;">Configuração do Pix</h2>
+            <table class="form-table">
+                <tr valign="top">
+                    <th scope="row">Exibição do Desconto no Pix</th>
+                    <td>
+                        <fieldset>
+                            <label>
+                                <input type="radio" name="wd_pix_display_type" value="calculated" <?php checked($pix_option, 'calculated'); ?> />
+                                <span>Exibir valor com desconto (ex: "R$ 95,00 com 5% de desconto")</span>
+                            </label>
+                              
+
+                            <label>
+                                <input type="radio" name="wd_pix_display_type" value="static" <?php checked($pix_option, 'static'); ?> />
+                                <span>Exibir apenas texto do desconto (ex: "No Pix (5% de Desconto)")</span>
+                            </label>
+                        </fieldset>
+                    </td>
+                </tr>
+            </table>
+
+            <?php submit_button('Salvar Alterações'); ?>
+        </form>
+    </div>
+    <?php
+}
+
+// =================================================================================
+// 2. LÓGICA DE EXIBIÇÃO BASEADA NAS OPÇÕES SALVAS
+// =================================================================================
+
+/**
+ * Exibe o parcelamento e o pix nos cards da loja.
+ */
+add_action( 'woocommerce_after_shop_loop_item_title', 'wd_mostrar_info_pagamento_global', 15 );
+function wd_mostrar_info_pagamento_global() {
+    global $product;
+    // Você pode decidir a ordem ou se quer mostrar ambos.
+    // Por padrão, mostraremos apenas o parcelamento no grid para não poluir.
+    echo wd_get_cartao_html_global( $product );
+}
+
+/**
+ * Gera o HTML do parcelamento de acordo com a opção global.
+ */
+function wd_get_cartao_html_global( $product ) {
+    if ( ! is_a( $product, 'WC_Product' ) ) return '';
+    $preco_atual = wd_get_product_price($product);
+    if ( empty( $preco_atual ) ) return '';
+
+    $tipo_parcelamento = get_option('wd_installment_default_type', '12x');
+
+    if ( $tipo_parcelamento === '3x' ) {
+        $numero_parcelas = 3;
+        $valor_parcela = $preco_atual / $numero_parcelas;
+        return sprintf(
+            '<span class="wd-info-pagamento wd-info-parcelamento">em até <strong>%dx de %s</strong> sem juros</span>',
+            $numero_parcelas, wc_price($valor_parcela)
+        );
+    } else {
+        $numero_parcelas = 12;
+        $valor_parcela = $preco_atual / $numero_parcelas;
+        return sprintf(
+            '<span class="wd-info-pagamento wd-info-parcelamento">em até <strong>%dx de %s</strong></span>',
+            $numero_parcelas, wc_price($valor_parcela)
+        );
+    }
+}
+
+/**
+ * Gera o HTML do Pix de acordo com a opção global.
+ */
+function wd_get_pix_html_global( $product ) {
     if ( ! is_a( $product, 'WC_Product' ) ) return '';
     
-    // Para produtos variáveis, pegamos o preço da variação padrão ou da mais barata
-    if ( $product->is_type('variable') ) {
-        $variation_ids = $product->get_children();
-        $variation_id = !empty($variation_ids) ? $variation_ids[0] : null;
-        $variation = $variation_id ? wc_get_product($variation_id) : null;
-        $preco_atual = $variation ? floatval($variation->get_price()) : 0;
+    $tipo_pix = get_option('wd_pix_display_type', 'calculated');
+
+    if ( $tipo_pix === 'static' ) {
+        return '<span class="wd-info-pagamento wd-info-pix">No Pix <strong>(5% de Desconto)</strong></span>';
     } else {
-        $preco_atual = floatval( $product->get_price() );
+        $preco_atual = wd_get_product_price($product);
+        if ( empty( $preco_atual ) ) return '';
+        
+        $percentual_desconto_pix = 5;
+        $preco_com_desconto = $preco_atual * ( 1 - ( $percentual_desconto_pix / 100 ) );
+        return sprintf(
+            '<span class="wd-info-pagamento wd-info-pix"><strong>%s</strong> com %d%% de desconto no Pix</span>',
+            wc_price($preco_com_desconto), $percentual_desconto_pix
+        );
     }
+}
 
-    if ( empty( $preco_atual ) ) return '';
+// =================================================================================
+// 3. SHORTCODES E FUNÇÕES AUXILIARES
+// =================================================================================
 
-    $percentual_desconto_pix = 5; // 5%
-    $preco_com_desconto = $preco_atual * ( 1 - ( $percentual_desconto_pix / 100 ) );
-    $preco_pix_formatado = wc_price( $preco_com_desconto );
+// Shortcode [pagamento_cartao]
+add_shortcode( 'pagamento_cartao', 'wd_shortcode_cartao_global' );
+function wd_shortcode_cartao_global( $atts ) {
+    global $product;
+    $p = !empty($atts['id']) ? wc_get_product($atts['id']) : $product;
+    return wd_get_cartao_html_global($p);
+}
 
-    // Usamos uma classe simples para o JS encontrar o elemento, sem ID.
-    return sprintf(
-        '<span class="wd-info-pagamento wd-info-pix"><strong>%s</strong> com %d%% de desconto no Pix</span>',
-        $preco_pix_formatado,
-        $percentual_desconto_pix
-    );
+// Shortcode [pagamento_pix]
+add_shortcode( 'pagamento_pix', 'wd_shortcode_pix_global' );
+function wd_shortcode_pix_global( $atts ) {
+    global $product;
+    $p = !empty($atts['id']) ? wc_get_product($atts['id']) : $product;
+    return wd_get_pix_html_global($p);
 }
 
 /**
- * Gera o HTML para o parcelamento no cartão.
- * @param WC_Product $product O objeto do produto.
- * @return string O HTML da informação de parcelamento.
+ * Função auxiliar para pegar o preço de um produto, considerando variações.
  */
-function wd_get_cartao_html( $product ) {
-    if ( ! is_a( $product, 'WC_Product' ) ) return '';
-
-    // Para produtos variáveis, pegamos o preço da variação padrão ou da mais barata
+function wd_get_product_price( $product ) {
+    if ( ! is_a( $product, 'WC_Product' ) ) return 0;
     if ( $product->is_type('variable') ) {
-        $variation_ids = $product->get_children();
-        $variation_id = !empty($variation_ids) ? $variation_ids[0] : null;
-        $variation = $variation_id ? wc_get_product($variation_id) : null;
-        $preco_atual = $variation ? floatval($variation->get_price()) : 0;
-    } else {
-        $preco_atual = floatval( $product->get_price() );
+        $prices = $product->get_variation_prices(true);
+        return !empty($prices['price']) ? floatval(min($prices['price'])) : 0;
     }
-
-    if ( empty( $preco_atual ) ) return '';
-
-    $numero_maximo_parcelas = 12;
-    $valor_parcela = $preco_atual / $numero_maximo_parcelas;
-    $valor_parcela_formatado = wc_price( $valor_parcela );
-
-    // Usamos uma classe simples para o JS encontrar o elemento, sem ID.
-    return sprintf(
-        '<span class="wd-info-pagamento wd-info-parcelamento">em até <strong>%dx de %s</strong></span>',
-        $numero_maximo_parcelas,
-        $valor_parcela_formatado
-    );
+    return floatval($product->get_price());
 }
 
-// ---------------------------------------------------------------------------------
-// 2. EXIBIÇÃO AUTOMÁTICA E SHORTCODES
-// ---------------------------------------------------------------------------------
+// =================================================================================
+// 4. JAVASCRIPT E CSS
+// =================================================================================
 
-// Exibição automática nos cards da loja
-add_action( 'woocommerce_after_shop_loop_item_title', 'wd_mostrar_parcelamento_no_card', 15 );
-function wd_mostrar_parcelamento_no_card() {
-    global $product;
-    echo wd_get_cartao_html( $product );
-}
-
-// Função auxiliar para obter o produto para os shortcodes
-function wd_get_product_for_shortcode( $atts ) {
-    global $product;
-    if ( ! empty( $atts['id'] ) ) {
-        return wc_get_product( $atts['id'] );
-    }
-    return $product;
-}
-
-// Shortcode para Pagamento no Pix: [pagamento_pix]
-add_shortcode( 'pagamento_pix', 'wd_shortcode_pix' );
-function wd_shortcode_pix( $atts ) {
-    $product_obj = wd_get_product_for_shortcode( shortcode_atts( array( 'id' => null ), $atts ) );
-    return wd_get_pix_html( $product_obj );
-}
-
-// Shortcode para Pagamento no Cartão: [pagamento_cartao]
-add_shortcode( 'pagamento_cartao', 'wd_shortcode_cartao' );
-function wd_shortcode_cartao( $atts ) {
-    $product_obj = wd_get_product_for_shortcode( shortcode_atts( array( 'id' => null ), $atts ) );
-    return wd_get_cartao_html( $product_obj );
-}
-
-// ---------------------------------------------------------------------------------
-// 3. JAVASCRIPT PARA ATUALIZAÇÃO EM TEMPO REAL (VERSÃO WOODMART)
-// ---------------------------------------------------------------------------------
-add_action('wp_footer', 'wd_combined_price_update_script');
-function wd_combined_price_update_script() {
+add_action('wp_footer', 'wd_global_price_update_script');
+function wd_global_price_update_script() {
     if (!is_product()) return;
-    
     global $product;
     if (!is_object($product) || !$product instanceof WC_Product) return;
 
-    // Preço original para o caso de resetar a variação
-    $original_price = $product->is_type('variable') ? wc_get_product($product->get_children('min')[0])->get_price() : $product->get_price();
-    
+    $original_price = wd_get_product_price($product);
+    $installment_type = get_option('wd_installment_default_type', '12x');
+    $pix_type = get_option('wd_pix_display_type', 'calculated');
     ?>
     <script type="text/javascript">
     jQuery(document).ready(function($) {
-        // Aguarda um pouco para garantir que todos os scripts do WoodMart foram carregados
         setTimeout(function() {
             var $variationForm = $('.variations_form');
             if ($variationForm.length === 0) return;
 
-            // --- INÍCIO DA LÓGICA DE ATUALIZAÇÃO DO PARCELAMENTO ---
-            
-            // Função para formatar o preço no padrão do WooCommerce (ex: R$ 1.234,56)
+            var installmentType = '<?php echo esc_js($installment_type); ?>';
+            var pixType = '<?php echo esc_js($pix_type); ?>';
+
             function formatPrice(price) {
                 return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(price);
             }
 
-            // Função para atualizar os textos de pagamento
             function updatePaymentInfo(price) {
                 if (typeof price !== 'number' || price <= 0) return;
 
-                // Atualiza o parcelamento do Cartão
-                var maxInstallments = 12;
-                var installmentValue = price / maxInstallments;
-                var installmentPriceFormatted = formatPrice(installmentValue);
-                var cartaoHtml = 'em até <strong>' + maxInstallments + 'x de ' + installmentPriceFormatted + '</strong>';
-                $('.wd-info-parcelamento').html(cartaoHtml);
+                // Atualiza parcelamento
+                var installments = (installmentType === '3x') ? 3 : 12;
+                var installmentValue = price / installments;
+                var installmentHtml = 'em até <strong>' + installments + 'x de ' + formatPrice(installmentValue) + '</strong>' + (installmentType === '3x' ? ' sem juros' : '');
+                $('.wd-info-parcelamento').html(installmentHtml);
 
-                // Atualiza o desconto do PIX
-                var pixDiscountPercent = 5;
-                var pixPrice = price * (1 - (pixDiscountPercent / 100));
-                var pixPriceFormatted = formatPrice(pixPrice);
-                var pixHtml = '<strong>' + pixPriceFormatted + '</strong> com ' + pixDiscountPercent + '% de desconto no Pix';
-                $('.wd-info-pix').html(pixHtml);
+                // Atualiza Pix (apenas se for do tipo calculado)
+                if (pixType === 'calculated') {
+                    var pixDiscountPercent = 5;
+                    var pixPrice = price * (1 - (pixDiscountPercent / 100));
+                    var pixHtml = '<strong>' + formatPrice(pixPrice) + '</strong> com ' + pixDiscountPercent + '% de desconto no Pix';
+                    $('.wd-info-pix').html(pixHtml);
+                }
             }
 
-            // --- FIM DA LÓGICA DE ATUALIZAÇÃO DO PARCELAMENTO ---
-
-            // Escuta o evento 'show_variation' que o Woodmart usa
             $variationForm.on('show_variation', function(event, variation) {
-                // 'variation.display_price' contém o número do preço da variação
                 if (variation && typeof variation.display_price !== 'undefined') {
                     updatePaymentInfo(variation.display_price);
                 }
             });
             
-            // Escuta o evento 'hide_variation' (quando limpa a seleção)
             $variationForm.on('hide_variation', function() {
-                // Usa o preço original do produto para resetar
                 var originalPrice = <?php echo floatval($original_price); ?>;
-                updatePaymentInfo(originalPrice);
+                if (originalPrice > 0) {
+                    updatePaymentInfo(originalPrice);
+                }
             });
-
-        }, 500); // Aguarda 500ms para garantir que tudo foi carregado
+        }, 500);
     });
     </script>
     <?php
 }
 
-add_action( 'wp_head', 'wd_estilo_css_pagamento' );
-function wd_estilo_css_pagamento() {
-    $css_personalizado = "
+add_action( 'wp_head', 'wd_global_estilo_css' );
+function wd_global_estilo_css() {
+    echo "
     <style>
-        .wd-info-pagamento {
-            display: block;
-            color: black;
-            font-size: 13px;
-            line-height: 1.4;
-        }
-        /* Ajuste de margem para o parcelamento no grid */
-        .product-grid-item .wd-info-parcelamento {
-             margin-top: -10px !important;
-        }
-        .wd-info-pagamento .woocommerce-Price-amount.amount {
-            color: black !important;
-        }
+        .wd-info-pagamento { display: block; color: black; font-size: 13px; line-height: 1.4; }
+        .product-grid-item .wd-info-pagamento { margin-top: -10px !important; }
+        .wd-info-pagamento .woocommerce-Price-amount.amount { color: black !important; }
     </style>
     ";
-    echo $css_personalizado;
 }
-
