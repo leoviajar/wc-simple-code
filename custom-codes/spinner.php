@@ -1,3 +1,22 @@
+<?php
+/**
+ * Spinner Robusto para WooCommerce - Integração Completa
+ * 
+ * Este código adiciona um spinner profissional que aparece quando o usuário 
+ * clica em botões específicos detectados pelo texto, como:
+ * - "Adicionar ao carrinho"
+ * - "Finalizar compra"
+ * - "Continuar para finalização"
+ * - E muitas outras variações
+ * 
+ * Desenvolvido do zero com base em pesquisa aprofundada das melhores práticas.
+ */
+
+// Prevenir execução direta
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 /**
  * Função principal para adicionar o spinner
  */
