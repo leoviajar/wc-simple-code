@@ -121,38 +121,75 @@ function reorder_checkout_fields( $fields ) {
     return $fields;
 }
 
-add_filter('woocommerce_gateway_icon', 'custom_payment_gateway_icons_simple', 10, 2);
-function custom_payment_gateway_icons_simple( $icon, $gateway_id ) {
-    if ( 'loja5_woo_mercadopago' === $gateway_id ) {
-        $icon = '<span style="float:left; margin-left: -3px;">';
+add_filter('woocommerce_gateway_icon', 'custom_payment_gateway_icons_appmax', 10, 2);
+
+function custom_payment_gateway_icons_appmax( $icon, $gateway_id = '' ) {
+    
+    // Lista de gateways que devem receber os ícones de cartão
+    $target_gateways = array(
+        'pagamentos_para_woocommerce_com_appmax_credit_card', // ID correto da Appmax
+        'loja5_woo_mercadopago'                               // ID do gateway antigo (para manter a compatibilidade)
+    );
+
+    // Verifica se o gateway atual é um dos que queremos modificar
+    if ( in_array( $gateway_id, $target_gateways ) ) {
+        
+        $icon_html = '<span style="float:left; margin-left: -3px; line-height: 1;">';
 
         // Definir bandeiras com links SVG
         $bandeiras = array(
-            'amex' => 'https://github.bubbstore.com/svg/card-amex.svg',
-            'visa' => 'https://github.bubbstore.com/svg/card-visa.svg',
-            'diners' => 'https://github.bubbstore.com/svg/card-diners.svg',
+            'amex'       => 'https://github.bubbstore.com/svg/card-amex.svg',
+            'visa'       => 'https://github.bubbstore.com/svg/card-visa.svg',
+            'diners'     => 'https://github.bubbstore.com/svg/card-diners.svg',
             'mastercard' => 'https://github.bubbstore.com/svg/card-mastercard.svg',
-            'hipercard' => 'https://github.bubbstore.com/svg/card-hipercard.svg',
-            'elo' => 'https://github.bubbstore.com/svg/card-elo.svg'
-        );
+            'hipercard'  => 'https://github.bubbstore.com/svg/card-hipercard.svg',
+            'elo'        => 'https://github.bubbstore.com/svg/card-elo.svg'
+         );
 
-        // Iterar pelas bandeiras e gerar HTML
-        foreach($bandeiras as $b => $link){
-            $icon .= '<img style="cursor:pointer; float:left; min-height:30px; margin:3px; border-radius:5px;" title="' . ucfirst($b) . '" class="imagem_bandeira_mercadopago ' . $b . '" src="' . $link . '" width="30">&nbsp;&nbsp;';
+        // Iterar pelas bandeiras e gerar o HTML das imagens
+        foreach($bandeiras as $bandeira_nome => $link_svg){
+            $icon_html .= '<img style="cursor:pointer; float:left; max-height:25px; margin:3px;" title="' . ucfirst($bandeira_nome) . '" class="imagem_bandeira_gateway ' . $bandeira_nome . '" src="' . $link_svg . '" alt="' . ucfirst($bandeira_nome) . '">&nbsp;';
         }
 
-        $icon .= '</span>';
+        $icon_html .= '</span>';
+        
+        // Retorna os novos ícones
+        return $icon_html;
     }
+    
+    // Se não for o gateway da Appmax ou do Loja5, retorna o ícone original
     return $icon;
 }
 
-add_filter('woocommerce_gateway_title', 'customize_pix_discount_text', 10, 2);
-function customize_pix_discount_text($title, $gateway_id) {
-    // Verifica se o método de pagamento é o Pix do Mercado Pago
-    if ($gateway_id === 'loja5_woo_mercadopago_pix') {
-        // Remove os parênteses e substitui "off" por "Desconto"
-        $title = preg_replace('/\((\d+%) off\)/', '$1 DE DESCONTO', $title);
+
+add_filter('woocommerce_gateway_title', 'customize_pix_discount_text_reforçado', 99, 2);
+
+function customize_pix_discount_text_reforçado( $title, $gateway_id ) {
+    
+    // Alvo: Apenas o gateway de PIX específico
+    if ( 'loja5_woo_mercadopago_pix' === $gateway_id ) {
+        
+        // A expressão regular agora procura por:
+        // <small> seguido de (
+        // um grupo de números com % (ex: 5%)
+        // um espaço e a palavra "off"
+        // ) seguido de </small>
+        // A flag 'i' no final torna a busca insensível a maiúsculas/minúsculas (case-insensitive).
+        $padrao = '/<small>\((\d+%) off\)<\/small>/i';
+        
+        // O texto de substituição usa o grupo capturado ($1) e adiciona o novo texto.
+        $substituicao = '<small>$1 DE DESCONTO</small>';
+        
+        // Executa a substituição
+        $novo_titulo = preg_replace( $padrao, $substituicao, $title );
+        
+        // Verifica se a substituição ocorreu para evitar retornar um valor nulo em caso de erro
+        if ( $novo_titulo !== null ) {
+            return $novo_titulo;
+        }
     }
+    
+    // Retorna o título original se não for o gateway correto ou se houver erro
     return $title;
 }
 
@@ -292,5 +329,16 @@ add_filter( 'wc_smart_checkout_steps', function ( $steps ) {
 
     return $steps;
 }, 15 );
+
+add_filter( 'woocommerce_coupon_error','coupon_error_message_change',10,3 );
+
+function coupon_error_message_change($err, $err_code, $WC_Coupon) {
+    switch ( $err_code ) {
+        case $WC_Coupon::E_WC_COUPON_NOT_EXIST:
+            $err = 'Cupom não encontrado';
+    }
+    return $err;
+}
+
 
 ?>
