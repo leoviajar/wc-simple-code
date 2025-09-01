@@ -15,76 +15,79 @@ if ( ! function_exists( 'meu_template_loop_product_title_com_span' ) ) {
     }
 }
 
-add_filter( 'rank_math/snippet/rich_snippet_product_entity', function( $entity ) {
-    // Verifica se a entidade 'offers' existe. É crucial para evitar erros.
-    if ( isset( $entity['offers'] ) ) {
+// Shema Rank Math SEO
 
-        // --- 1. Adiciona os Detalhes de Envio (shippingDetails) ---
-        $entity['offers']['shippingDetails'] = [
-            '@type'             => 'OfferShippingDetails',
-            'shippingRate'      => [
-                '@type'    => 'MonetaryAmount',
-                'value'    => '10', // Você pode usar uma variável aqui se o frete não for fixo
-                'currency' => 'BRL',
-            ],
-            'shippingDestination' => [
-                '@type'        => 'DefinedRegion',
-                'addressCountry' => 'BR',
-            ],
-            'deliveryTime' => [
-                '@type' => 'ShippingDeliveryTime',
-                'handlingTime' => [
-                    '@type'    => 'QuantitativeValue',
-                    'minValue' => 1,
-                    'maxValue' => 2,
-                    'unitCode' => 'DAY',
-                ],
-                'transitTime' => [
-                    '@type'    => 'QuantitativeValue',
-                    'minValue' => 7,
-                    'maxValue' => 14,
-                    'unitCode' => 'DAY',
-                ],
-            ],
-        ];
-
-        // --- 2. Adiciona a Política de Devolução (hasMerchantReturnPolicy) ---
-        $entity['offers']['hasMerchantReturnPolicy'] = [
-            '@type'                 => 'MerchantReturnPolicy',
-            'applicableCountry'     => 'BR',
-            'returnPolicyCategory'  => 'https://schema.org/MerchantReturnFiniteReturnWindow',
-            'merchantReturnDays'    => 30,
-            'returnMethod'          => 'https://schema.org/ReturnByMail',
-            'returnFees'            => 'https://schema.org/FreeReturn',
-        ];
+add_filter( 'rank_math/json_ld', function( $data, $jsonld ) {
+    // 1. Verifica se estamos em uma página de produto válida.
+    if ( empty( $data['richSnippet'] ) || ! in_array( $data['richSnippet']['@type'], [ 'Product', 'ProductGroup' ] ) ) {
+        return $data;
     }
 
-    // Retorna a entidade modificada para o Rank Math.
-    return $entity;
-} );
-
-/**
- * Adiciona telephone, address, e priceRange ao schema de Organization/Store do Rank Math.
- * Este filtro modifica a entidade principal da organização do site.
- */
-add_filter( 'rank_math/json_ld/organization', function( $data ) {
-    // 1. Adiciona o Telefone
-    // Formato internacional é recomendado
-    $data['telephone'] = '+5511912345678'; // <-- SUBSTITUA PELO SEU TELEFONE
-
-    // 2. Adiciona a Faixa de Preço
-    // Use $, $$, $$$ ou $$$$. '$$' é um bom começo.
-    $data['priceRange'] = '$$'; // <-- AJUSTE SE NECESSÁRIO
-
-    // 3. Adiciona o Endereço Completo
-    $data['address'] = [
-        '@type'           => 'PostalAddress',
-        'streetAddress'   => 'Rua Exemplo, 123, Sala 45', // <-- SUBSTITUA
-        'addressLocality' => 'Sua Cidade',               // <-- SUBSTITUA
-        'addressRegion'   => 'SP',                       // <-- SUBSTITUA (Sigla do Estado)
-        'postalCode'      => '12345-678',                // <-- SUBSTITUA
-        'addressCountry'  => 'BR',
+    // 2. Define os dados de Envio (shippingDetails) uma única vez.
+    // Usamos um @id para poder reutilizar este bloco sem duplicar o código.
+    $data['shippingDetails'] = [
+        '@context'     => 'https://schema.org/',
+        '@type'        => 'OfferShippingDetails',
+        '@id'          => '#shipping_policy', // ID para referência interna
+        'shippingRate' => [
+            '@type'    => 'MonetaryAmount',
+            'value'    => '0', // SEU FRETE GRÁTIS
+            'currency' => 'BRL',
+        ],
+        'shippingDestination' => [
+            '@type'        => 'DefinedRegion',
+            'addressCountry' => 'BR',
+        ],
+        'deliveryTime' => [
+            '@type' => 'ShippingDeliveryTime',
+            'handlingTime' => [
+                '@type'    => 'QuantitativeValue',
+                'minValue' => 1,
+                'maxValue' => 2,
+                'unitCode' => 'DAY',
+            ],
+            'transitTime' => [
+                '@type'    => 'QuantitativeValue',
+                'minValue' => 7,
+                'maxValue' => 14,
+                'unitCode' => 'DAY',
+            ],
+        ],
     ];
 
+    // 3. Define os dados da Política de Devolução (hasMerchantReturnPolicy ) uma única vez.
+    $data['hasMerchantReturnPolicy'] = [
+        '@context'             => 'https://schema.org/',
+        '@type'                => 'MerchantReturnPolicy',
+        '@id'                  => '#merchant_policy', // ID para referência interna
+        'applicableCountry'    => 'BR',
+        'returnPolicyCategory' => 'https://schema.org/MerchantReturnFiniteReturnWindow',
+        'merchantReturnDays'   => 30, // SEUS 30 DIAS
+        'returnMethod'         => 'https://schema.org/ReturnByMail',
+        'returnFees'           => 'https://schema.org/FreeReturn',
+    ];
+
+    // 4. Aplica as políticas ao produto.
+
+    // Caso 1: Produto Simples (tem 'offers', mas não 'hasVariant' )
+    if ( 'Product' === $data['richSnippet']['@type'] && isset($data['richSnippet']['offers']) ) {
+        $data['richSnippet']['offers']['shippingDetails'] = [ '@id' => '#shipping_policy' ];
+        $data['richSnippet']['offers']['hasMerchantReturnPolicy'] = ['@id' => '#merchant_policy'];
+    }
+
+    // Caso 2: Produto Variável (tem 'hasVariant')
+    if ( ! empty( $data['richSnippet']['hasVariant'] ) ) {
+        // Itera sobre cada variação do produto
+        foreach ( $data['richSnippet']['hasVariant'] as $key => $variant ) {
+            if ( empty( $variant['offers'] ) ) {
+                continue; // Pula se a variação não tiver uma oferta
+            }
+            // Adiciona a referência da política de envio e devolução à oferta da variação
+            $data['richSnippet']['hasVariant'][ $key ]['offers']['shippingDetails'] = [ '@id' => '#shipping_policy' ];
+            $data['richSnippet']['hasVariant'][ $key ]['offers']['hasMerchantReturnPolicy'] = [ '@id' => '#merchant_policy' ];
+        }
+    }
+
     return $data;
-});
+
+}, 99, 2);
