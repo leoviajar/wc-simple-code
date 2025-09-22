@@ -172,8 +172,6 @@ function wc_spinner_robusto_output() {
                 // Português
                 'adicionar ao carrinho',
                 'adicionar no carrinho',
-                'comprar agora',
-                'finalizar compra',
                 'finalização de compra',
                 'continuar para finalização',
                 'continuar para checkout',
